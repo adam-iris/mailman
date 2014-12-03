@@ -89,14 +89,30 @@ def _should_clobber(msg, msgdata, archiver):
 class ArchiveRunner(Runner):
     """The archive runner."""
 
+    def __init__(self, name, slice=None):
+        super(ArchiveRunner, self).__init__(name, slice)
+        log.info("Config file: {0}".format(config.filename))
+        log.info("Archiver classes: " + ', '.join(section['class'] for section in config._config.getByCategory('archiver')))
+        log.info("System archivers: {0}".format(', '.join(a.name for a in config.archivers)))
+        try:
+            from hyperkitty.archiver import Archiver
+            log.info("Able to import from Hyperkitty")
+        except:
+            log.info("Can't import from Hyperkitty")
+
+
     def _dispose(self, mlist, msg, msgdata):
         received_time = msgdata.get('received_time', now(strip_tzinfo=False))
+        log.info("System archivers: {0}".format(', '.join(a.name for a in config.archivers)))
         archiver_set = IListArchiverSet(mlist)
         for archiver in archiver_set.archivers:
             # The archiver is disabled if either the list-specific or
             # site-wide archiver is disabled.
+            log.info("Trying archiver {0.name}".format(archiver))
             if not archiver.is_enabled:
+                log.info("Archiver {0.name} not enabled. System archiver is {1}".format(archiver, archiver.system_archiver))
                 continue
+            log.info("Archiver {0.name} is enabled".format(archiver))
             msg_copy = copy.deepcopy(msg)
             if _should_clobber(msg, msgdata, archiver.name):
                 original_date = msg_copy['date']

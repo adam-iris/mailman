@@ -43,7 +43,6 @@ class MissingUserError(MailmanError):
         return self.user_id
 
 
-
 class ISubscriptionService(Interface):
     """General Subscription services."""
 

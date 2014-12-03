@@ -581,7 +581,7 @@ class ListArchiver(Model):
 
     @property
     def is_enabled(self):
-        return self.system_archiver.is_enabled and self._is_enabled
+        return self.system_archiver and self.system_archiver.is_enabled and self._is_enabled
 
     @is_enabled.setter
     def is_enabled(self, value):

@@ -51,6 +51,8 @@ from mailman.rest.members import AMember, MemberCollection
 from mailman.rest.moderation import HeldMessages, SubscriptionRequests
 from mailman.rest.validator import Validator
 
+import logging
+log = logging.getLogger('mailman.http')
 
 
 def member_matcher(request, segments):
@@ -118,6 +120,8 @@ class _ListBase(CollectionMixin):
     @paginate
     def _get_collection(self, request):
         """See `CollectionMixin`."""
+        log.info("In _get_collection")
+        print("In _get_collection")
         return list(getUtility(IListManager))
 
 

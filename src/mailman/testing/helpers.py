@@ -524,8 +524,3 @@ class LogFileMark:
         with open(self._filename) as fp:
             fp.seek(self._filepos)
             return fp.readline()
-
-    def read(self):
-        with open(self._filename) as fp:
-            fp.seek(self._filepos)
-            return fp.read()

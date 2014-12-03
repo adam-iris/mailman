@@ -39,7 +39,8 @@ from mailman.core.constants import system_preferences
 from mailman.database.transaction import dbconnection
 from mailman.interfaces.listmanager import (
     IListManager, ListDeletingEvent, NoSuchListError)
-from mailman.interfaces.member import DeliveryMode, MemberRole
+from mailman.interfaces.member import (
+    DeliveryMode, MemberRole, MembershipModeratedError)
 from mailman.interfaces.subscriptions import (
     ISubscriptionService, MissingUserError)
 from mailman.interfaces.usermanager import IUserManager
@@ -147,6 +148,7 @@ class SubscriptionService:
         mlist = getUtility(IListManager).get_by_list_id(list_id)
         if mlist is None:
             raise NoSuchListError(list_id)
+
         # Is the subscriber an email address or user id?
         if isinstance(subscriber, basestring):
             if display_name is None:
@@ -158,6 +160,7 @@ class SubscriptionService:
             # it can't be retrieved.  Note that none of these are used unless
             # the address is completely new to us.
             password = generate(int(config.passwords.password_length))
+
             return add_member(mlist, subscriber, display_name, password,
                               delivery_mode,
                               system_preferences.preferred_language, role)
@@ -167,6 +170,7 @@ class SubscriptionService:
             user = getUtility(IUserManager).get_user_by_id(subscriber)
             if user is None:
                 raise MissingUserError(subscriber)
+
             return mlist.subscribe(user, role)
 
     def leave(self, list_id, email):

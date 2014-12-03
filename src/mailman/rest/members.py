@@ -37,7 +37,7 @@ from mailman.interfaces.address import InvalidEmailAddressError
 from mailman.interfaces.listmanager import IListManager, NoSuchListError
 from mailman.interfaces.member import (
     AlreadySubscribedError, DeliveryMode, MemberRole, MembershipError,
-    NotAMemberError)
+    NotAMemberError, MembershipModeratedError)
 from mailman.interfaces.subscriptions import ISubscriptionService
 from mailman.interfaces.user import UnverifiedAddressError
 from mailman.interfaces.usermanager import IUserManager
@@ -222,6 +222,9 @@ class AllMembers(_MemberBase):
             bad_request(response, b'Invalid email address')
         except ValueError as error:
             bad_request(response, str(error))
+        except MembershipModeratedError as error:
+            location = path_to('requests/{0}'.format(error.request_id))
+            created(response, location)
         else:
             # The member_id are UUIDs.  We need to use the integer equivalent
             # in the URL.

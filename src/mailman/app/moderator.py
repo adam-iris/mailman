@@ -14,7 +14,6 @@
 #
 # You should have received a copy of the GNU General Public License along with
 # GNU Mailman.  If not, see <http://www.gnu.org/licenses/>.
-
 """Application support for moderators."""
 
 from __future__ import absolute_import, print_function, unicode_literals
@@ -40,6 +39,7 @@ from zope.component import getUtility
 from mailman.app.membership import add_member, delete_member
 from mailman.app.notifications import send_admin_subscription_notice
 from mailman.config import config
+from mailman.core.constants import system_preferences
 from mailman.core.i18n import _
 from mailman.email.message import UserNotification
 from mailman.interfaces.action import Action
@@ -49,8 +49,10 @@ from mailman.interfaces.member import (
     AlreadySubscribedError, DeliveryMode, NotAMemberError)
 from mailman.interfaces.messages import IMessageStore
 from mailman.interfaces.requests import IListRequests, RequestType
+from mailman.interfaces.usermanager import IUserManager
 from mailman.utilities.datetime import now
 from mailman.utilities.i18n import make
+
 
 
 NL = '\n'
@@ -196,12 +198,25 @@ def handle_message(mlist, id, action,
 
 
 
-def hold_subscription(mlist, address, display_name, password, mode, language):
+def hold_subscription(mlist, address, display_name=None,
+                      password=None, delivery_mode=DeliveryMode.regular,
+                      language=None):
+
+    user_manager = getUtility(IUserManager)
+    user = user_manager.get_user(address)
+    if user:
+        if not display_name:
+            display_name = user.display_name
+        if not language:
+            language = user.preferences.preferred_language.code
+    else:
+        if not language:
+            language = system_preferences.preferred_language.code
     data = dict(when=now().isoformat(),
                 address=address,
                 display_name=display_name,
                 password=password,
-                delivery_mode=mode.name,
+                delivery_mode=delivery_mode.name,
                 language=language)
     # Now hold this request.  We'll use the address as the key.
     requestsdb = IListRequests(mlist)

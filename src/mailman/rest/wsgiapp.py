@@ -151,6 +151,7 @@ def make_application():
     Use this if you want to integrate Mailman's REST server with your own WSGI
     server.
     """
+    log.info("Creating application")
     return RootedAPI(Root())
 
 
@@ -159,6 +160,7 @@ def make_server():
 
     Use this if you just want to run Mailman's wsgiref-based REST server.
     """
+    log.info("Creating server")
     host = config.webservice.hostname
     port = int(config.webservice.port)
     server = wsgi_server(

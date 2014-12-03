@@ -160,7 +160,17 @@ class NotAMemberError(MembershipError):
             self._address, self._mlist)
 
 
-
+class MembershipModeratedError(MembershipError):
+    """ Membership is being held for moderation """
+
+    def __init__(self, request_id):
+        super(MembershipModeratedError, self).__init__()
+        self.request_id = request_id
+
+    def __str__(self):
+        return self.request_id
+
+
 class IMember(Interface):
     """A member of a mailing list."""
 

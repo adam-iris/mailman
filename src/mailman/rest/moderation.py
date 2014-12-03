@@ -29,13 +29,14 @@ __all__ = [
 
 
 from mailman.app.moderator import (
-    handle_message, handle_subscription, handle_unsubscription)
+    handle_message, handle_subscription, handle_unsubscription, hold_subscription)
 from mailman.interfaces.action import Action
+from mailman.interfaces.member import DeliveryMode, MemberRole
 from mailman.interfaces.messages import IMessageStore
 from mailman.interfaces.requests import IListRequests, RequestType
 from mailman.rest.helpers import (
-    CollectionMixin, bad_request, child, etag, no_content, not_found, okay)
-from mailman.rest.validator import Validator, enum_validator
+    CollectionMixin, bad_request, child, etag, no_content, not_found, okay, path_to, created)
+from mailman.rest.validator import Validator, enum_validator, subscriber_validator
 from zope.component import getUtility
 
 
@@ -253,3 +254,19 @@ class SubscriptionRequests(_ModerationBase, CollectionMixin):
     @child(r'^(?P<id>[^/]+)')
     def subscription(self, request, segments, **kw):
         return MembershipChangeRequest(self._mlist, kw['id'])
+
+    def on_post(self, request, response):
+        try:
+            validator = Validator(
+                address=unicode,
+                display_name=unicode,
+                password=unicode,
+                delivery_mode=enum_validator(DeliveryMode),
+                role=enum_validator(MemberRole),
+                _optional=('password', 'delivery_mode', 'display_name', 'role'))
+            arguments = validator(request)
+        except ValueError as error:
+            bad_request(response, str(error))
+        request_id = hold_subscription(self._mlist, **arguments)
+        location = path_to('lists/{0}/requests/{1}'.format(self._mlist.list_id, request_id))
+        created(response, location)
