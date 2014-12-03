@@ -21,6 +21,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 __metaclass__ = type
 __all__ = [
+    'TestModeration',
     ]
 
 
@@ -33,6 +34,7 @@ from mailman.app.moderator import hold_message, hold_subscription
 from mailman.config import config
 from mailman.database.transaction import transaction
 from mailman.interfaces.member import DeliveryMode
+from mailman.interfaces.subscriptions import RequestRecord
 from mailman.testing.helpers import (
     call_api, specialized_message_from_string as mfs)
 from mailman.testing.layers import RESTLayer
@@ -79,8 +81,9 @@ Something else.
         # in the database.
         held_id = hold_message(self._mlist, self._msg)
         subscribe_id = hold_subscription(
-            self._mlist, 'bperson@example.net', 'Bart Person', 'xyz',
-            DeliveryMode.regular, 'en')
+            self._mlist,
+            RequestRecord('bperson@example.net', 'Bart Person',
+                          DeliveryMode.regular, 'en'))
         config.db.store.commit()
         url = 'http://localhost:9001/3.0/lists/ant@example.com/held/{0}'
         with self.assertRaises(HTTPError) as cm:
@@ -116,8 +119,9 @@ Something else.
     def test_bad_subscription_action(self):
         # POSTing to a held message with a bad action.
         held_id = hold_subscription(
-            self._mlist, 'cperson@example.net', 'Cris Person', 'xyz',
-            DeliveryMode.regular, 'en')
+            self._mlist,
+            RequestRecord('cperson@example.net', 'Cris Person',
+                          DeliveryMode.regular, 'en'))
         config.db.store.commit()
         url = 'http://localhost:9001/3.0/lists/ant@example.com/requests/{0}'
         with self.assertRaises(HTTPError) as cm:

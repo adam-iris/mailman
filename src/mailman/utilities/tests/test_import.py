@@ -289,13 +289,16 @@ class TestBasicImport(unittest.TestCase):
         except Import21Error as error:
             # Check the message.
             self.assertIn('[language.xx_XX]', str(error))
-        else:                                       # pragma: no cover
+        else:
             self.fail('Import21Error was not raised')
 
     def test_encode_ascii_prefixes(self):
         self._pckdict['encode_ascii_prefixes'] = 2
         self.assertEqual(self._mlist.encode_ascii_prefixes, False)
-        self._import()
+        try:
+            self._import()
+        except IntegrityError as e:
+            self.fail(e)
         self.assertEqual(self._mlist.encode_ascii_prefixes, True)
 
 
@@ -650,7 +653,7 @@ class TestRosterImport(unittest.TestCase):
             import_config_pck(self._mlist, self._pckdict)
         except Import21Error as error:
             self.assertIn('[language.xx_XX]', str(error))
-        else:                                       # pragma: no cover
+        else:
             self.fail('Import21Error was not raised')
 
     def test_username(self):

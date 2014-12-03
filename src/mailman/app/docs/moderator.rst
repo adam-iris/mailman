@@ -238,14 +238,15 @@ Holding subscription requests
 For closed lists, subscription requests will also be held for moderator
 approval.  In this case, several pieces of information related to the
 subscription must be provided, including the subscriber's address and real
-name, their password (possibly hashed), what kind of delivery option they are
-choosing and their preferred language.
+name, , what kind of delivery option they are choosing and their preferred
+language.
 
     >>> from mailman.app.moderator import hold_subscription
     >>> from mailman.interfaces.member import DeliveryMode
-    >>> req_id = hold_subscription(
-    ...     mlist, 'fred@example.org', 'Fred Person',
-    ...     '{NONE}abcxyz', DeliveryMode.regular, 'en')
+    >>> from mailman.interfaces.subscriptions import RequestRecord
+    >>> req_id = hold_subscription(mlist,
+    ...     RequestRecord('fred@example.org', 'Fred Person',
+    ...                   DeliveryMode.regular, 'en'))
 
 
 Disposing of membership change requests
@@ -268,10 +269,9 @@ The held subscription can also be discarded.
 
 Gwen tries to subscribe to the mailing list, but...
 
-    >>> req_id = hold_subscription(
-    ...     mlist, 'gwen@example.org', 'Gwen Person',
-    ...     '{NONE}zyxcba', DeliveryMode.regular, 'en')
-
+    >>> req_id = hold_subscription(mlist,
+    ...     RequestRecord('gwen@example.org', 'Gwen Person',
+    ...                   DeliveryMode.regular, 'en'))
 
 ...her request is rejected...
 
@@ -304,9 +304,9 @@ The subscription can also be accepted.  This subscribes the address to the
 mailing list.
 
     >>> mlist.send_welcome_message = False
-    >>> req_id = hold_subscription(
-    ...     mlist, 'herb@example.org', 'Herb Person',
-    ...     'abcxyz', DeliveryMode.regular, 'en')
+    >>> req_id = hold_subscription(mlist,
+    ...     RequestRecord('herb@example.org', 'Herb Person',
+    ...                   DeliveryMode.regular, 'en'))
 
 The moderators accept the subscription request.
 
@@ -399,8 +399,9 @@ list is configured to send them.
 
 Iris tries to subscribe to the mailing list.
 
-    >>> req_id = hold_subscription(mlist, 'iris@example.org', 'Iris Person',
-    ...                   'password', DeliveryMode.regular, 'en')
+    >>> req_id = hold_subscription(mlist,
+    ...     RequestRecord('iris@example.org', 'Iris Person',
+    ...                   DeliveryMode.regular, 'en'))
 
 There's now a message in the virgin queue, destined for the list owner.
 
@@ -491,8 +492,10 @@ can get a welcome message.
 
     >>> mlist.admin_notify_mchanges = False
     >>> mlist.send_welcome_message = True
-    >>> req_id = hold_subscription(mlist, 'kate@example.org', 'Kate Person',
-    ...                            'password', DeliveryMode.regular, 'en')
+    >>> req_id = hold_subscription(
+    ...     mlist,
+    ...     RequestRecord('kate@example.org', 'Kate Person',
+    ...                   DeliveryMode.regular, 'en'))
     >>> handle_subscription(mlist, req_id, Action.accept)
     >>> messages = get_queue_messages('virgin')
     >>> len(messages)

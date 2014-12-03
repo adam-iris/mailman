@@ -22,6 +22,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 __metaclass__ = type
 __all__ = [
     'TestModeration',
+    'TestUnsubscription',
     ]
 
 
@@ -30,10 +31,14 @@ import unittest
 from zope.component import getUtility
 
 from mailman.app.lifecycle import create_list
-from mailman.app.moderator import handle_message, hold_message
+from mailman.app.moderator import (
+    handle_message, handle_subscription, handle_unsubscription, hold_message,
+    hold_subscription, hold_unsubscription)
 from mailman.interfaces.action import Action
+from mailman.interfaces.member import DeliveryMode
 from mailman.interfaces.messages import IMessageStore
 from mailman.interfaces.requests import IListRequests
+from mailman.interfaces.subscriptions import RequestRecord
 from mailman.runners.incoming import IncomingRunner
 from mailman.runners.outgoing import OutgoingRunner
 from mailman.runners.pipeline import PipelineRunner
@@ -152,3 +157,26 @@ Message-ID: <alpha>
                          'Forward of moderated message')
         self.assertEqual(messages[0].msgdata['recipients'],
                          ['zack@example.com'])
+
+
+
+class TestUnsubscription(unittest.TestCase):
+    """Test unsubscription requests."""
+
+    layer = SMTPLayer
+
+    def setUp(self):
+        self._mlist = create_list('test@example.com')
+        self._request_db = IListRequests(self._mlist)
+
+    def test_unsubscribe_defer(self):
+        # When unsubscriptions must be approved by the moderator, but the
+        # moderator defers this decision.
+        token = hold_subscription(
+            self._mlist,
+            RequestRecord('anne@example.org', 'Anne Person',
+                          DeliveryMode.regular, 'en'))
+        handle_subscription(self._mlist, token, Action.accept)
+        # Now hold and handle an unsubscription request.
+        token = hold_unsubscription(self._mlist, 'anne@example.org')
+        handle_unsubscription(self._mlist, token, Action.defer)

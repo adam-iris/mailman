@@ -26,18 +26,18 @@ __all__ = [
     ]
 
 
+from restish import http, resource
+from zope.component import getUtility
+
 from mailman.interfaces.domain import (
     BadDomainSpecificationError, IDomainManager)
-from mailman.rest.helpers import (
-    BadRequest, CollectionMixin, NotFound, bad_request, child, created, etag,
-    no_content, not_found, okay, path_to)
+from mailman.rest.helpers import CollectionMixin, etag, no_content, path_to
 from mailman.rest.lists import ListsForDomain
 from mailman.rest.validator import Validator
-from zope.component import getUtility
 
 
 
-class _DomainBase(CollectionMixin):
+class _DomainBase(resource.Resource, CollectionMixin):
     """Shared base class for domain representations."""
 
     def _resource_as_dict(self, domain):
@@ -62,40 +62,41 @@ class ADomain(_DomainBase):
     def __init__(self, domain):
         self._domain = domain
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def domain(self, request):
         """Return a single domain end-point."""
         domain = getUtility(IDomainManager).get(self._domain)
         if domain is None:
-            not_found(response)
-        else:
-            okay(response, self._resource_as_json(domain))
+            return http.not_found()
+        return http.ok([], self._resource_as_json(domain))
 
-    def on_delete(self, request, response):
+    @resource.DELETE()
+    def delete(self, request):
         """Delete the domain."""
         try:
             getUtility(IDomainManager).remove(self._domain)
         except KeyError:
             # The domain does not exist.
-            not_found(response)
-        else:
-            no_content(response)
+            return http.not_found()
+        return no_content()
 
-    @child()
+    @resource.child()
     def lists(self, request, segments):
         """/domains/<domain>/lists"""
         if len(segments) == 0:
             domain = getUtility(IDomainManager).get(self._domain)
             if domain is None:
-                return NotFound()
+                return http.not_found()
             return ListsForDomain(domain)
         else:
-            return BadRequest(), []
+            return http.bad_request()
 
 
 class AllDomains(_DomainBase):
     """The domains."""
 
-    def on_post(self, request, response):
+    @resource.POST()
+    def create(self, request):
         """Create a new domain."""
         domain_manager = getUtility(IDomainManager)
         try:
@@ -107,13 +108,15 @@ class AllDomains(_DomainBase):
                                              'contact_address'))
             domain = domain_manager.add(**validator(request))
         except BadDomainSpecificationError:
-            bad_request(response, b'Domain exists')
+            return http.bad_request([], b'Domain exists')
         except ValueError as error:
-            bad_request(response, str(error))
-        else:
-            created(response, path_to('domains/{0}'.format(domain.mail_host)))
+            return http.bad_request([], str(error))
+        location = path_to('domains/{0}'.format(domain.mail_host))
+        # Include no extra headers or body.
+        return http.created(location, [], None)
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def collection(self, request):
         """/domains"""
         resource = self._make_collection(request)
-        okay(response, etag(resource))
+        return http.ok([], etag(resource))

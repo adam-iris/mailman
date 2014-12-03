@@ -28,15 +28,16 @@ __all__ = [
     ]
 
 
+from restish import http, resource
+from zope.component import getUtility
+
 from mailman.app.moderator import (
     handle_message, handle_subscription, handle_unsubscription)
 from mailman.interfaces.action import Action
 from mailman.interfaces.messages import IMessageStore
 from mailman.interfaces.requests import IListRequests, RequestType
-from mailman.rest.helpers import (
-    CollectionMixin, bad_request, child, etag, no_content, not_found, okay)
+from mailman.rest.helpers import CollectionMixin, etag, no_content
 from mailman.rest.validator import Validator, enum_validator
-from zope.component import getUtility
 
 
 HELD_MESSAGE_REQUESTS = (RequestType.held_message,)
@@ -100,48 +101,45 @@ class _HeldMessageBase(_ModerationBase):
         return resource
 
 
-class HeldMessage(_HeldMessageBase):
+class HeldMessage(_HeldMessageBase, resource.Resource):
     """Resource for moderating a held message."""
 
     def __init__(self, mlist, request_id):
         self._mlist = mlist
         self._request_id = request_id
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def details(self, request):
         try:
             request_id = int(self._request_id)
         except ValueError:
-            bad_request(response)
-            return
+            return http.bad_request()
         resource = self._make_resource(request_id)
         if resource is None:
-            not_found(response)
-        else:
-            okay(response, etag(resource))
+            return http.not_found()
+        return http.ok([], etag(resource))
 
-    def on_post(self, request, response):
+    @resource.POST()
+    def moderate(self, request):
         try:
             validator = Validator(action=enum_validator(Action))
             arguments = validator(request)
         except ValueError as error:
-            bad_request(response, str(error))
-            return
+            return http.bad_request([], str(error))
         requests = IListRequests(self._mlist)
         try:
             request_id = int(self._request_id)
         except ValueError:
-            bad_request(response)
-            return
+            return http.bad_request()
         results = requests.get_request(request_id, RequestType.held_message)
         if results is None:
-            not_found(response)
-        else:
-            handle_message(self._mlist, request_id, **arguments)
-            no_content(response)
+            return http.not_found()
+        handle_message(self._mlist, request_id, **arguments)
+        return no_content()
 
 
 
-class HeldMessages(_HeldMessageBase, CollectionMixin):
+class HeldMessages(_HeldMessageBase, resource.Resource, CollectionMixin):
     """Resource for messages held for moderation."""
 
     def __init__(self, mlist):
@@ -157,72 +155,70 @@ class HeldMessages(_HeldMessageBase, CollectionMixin):
         self._requests = requests
         return list(requests.of_type(RequestType.held_message))
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def requests(self, request):
         """/lists/listname/held"""
+        # `request` is a restish.http.Request object.
         resource = self._make_collection(request)
-        okay(response, etag(resource))
+        return http.ok([], etag(resource))
 
-    @child(r'^(?P<id>[^/]+)')
+    @resource.child('{id}')
     def message(self, request, segments, **kw):
         return HeldMessage(self._mlist, kw['id'])
 
 
 
-class MembershipChangeRequest(_ModerationBase):
+class MembershipChangeRequest(resource.Resource, _ModerationBase):
     """Resource for moderating a membership change."""
 
     def __init__(self, mlist, request_id):
         self._mlist = mlist
         self._request_id = request_id
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def details(self, request):
         try:
             request_id = int(self._request_id)
         except ValueError:
-            bad_request(response)
-            return
+            return http.bad_request()
         resource = self._make_resource(request_id, MEMBERSHIP_CHANGE_REQUESTS)
         if resource is None:
-            not_found(response)
-        else:
-            # Remove unnecessary keys.
-            del resource['key']
-            okay(response, etag(resource))
+            return http.not_found()
+        # Remove unnecessary keys.
+        del resource['key']
+        return http.ok([], etag(resource))
 
-    def on_post(self, request, response):
+    @resource.POST()
+    def moderate(self, request):
         try:
             validator = Validator(action=enum_validator(Action))
             arguments = validator(request)
         except ValueError as error:
-            bad_request(response, str(error))
-            return
+            return http.bad_request([], str(error))
         requests = IListRequests(self._mlist)
         try:
             request_id = int(self._request_id)
         except ValueError:
-            bad_request(response)
-            return
+            return http.bad_request()
         results = requests.get_request(request_id)
         if results is None:
-            not_found(response)
-            return
+            return http.not_found()
         key, data = results
         try:
             request_type = RequestType[data['_request_type']]
         except ValueError:
-            bad_request(response)
-            return
+            return http.bad_request()
         if request_type is RequestType.subscription:
             handle_subscription(self._mlist, request_id, **arguments)
         elif request_type is RequestType.unsubscription:
             handle_unsubscription(self._mlist, request_id, **arguments)
         else:
-            bad_request(response)
-            return
-        no_content(response)
+            return http.bad_request()
+        return no_content()
 
 
-class SubscriptionRequests(_ModerationBase, CollectionMixin):
+class SubscriptionRequests(
+        _ModerationBase, resource.Resource, CollectionMixin):
     """Resource for membership change requests."""
 
     def __init__(self, mlist):
@@ -245,11 +241,13 @@ class SubscriptionRequests(_ModerationBase, CollectionMixin):
                 items.append(request)
         return items
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def requests(self, request):
         """/lists/listname/requests"""
+        # `request` is a restish.http.Request object.
         resource = self._make_collection(request)
-        okay(response, etag(resource))
+        return http.ok([], etag(resource))
 
-    @child(r'^(?P<id>[^/]+)')
+    @resource.child('{id}')
     def subscription(self, request, segments, **kw):
         return MembershipChangeRequest(self._mlist, kw['id'])

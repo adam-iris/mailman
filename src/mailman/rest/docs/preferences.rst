@@ -199,12 +199,21 @@ Preferences accessed through this interface are always read only.
     receive_own_postings: False
     self_link: http://localhost:9001/3.0/members/1/all/preferences
 
+These preferences cannot be changed.
+
+    >>> dump_json('http://localhost:9001/3.0/members/1/all/preferences', {
+    ...           'delivery_status': 'enabled',
+    ...           }, method='PATCH')
+    Traceback (most recent call last):
+    ...
+    HTTPError: HTTP Error 405: 405 Method Not Allowed
+
 
 System preferences
 ==================
 
 The Mailman system itself has a default set of preference.  All preference
-look ups fall back to these values, which are read-only.
+lookups fall back to these values, which are read-only.
 
     >>> dump_json('http://localhost:9001/3.0/system/preferences')
     acknowledge_posts: False
@@ -216,3 +225,12 @@ look ups fall back to these values, which are read-only.
     receive_list_copy: True
     receive_own_postings: True
     self_link: http://localhost:9001/3.0/system/preferences
+
+These preferences cannot be changed.
+
+    >>> dump_json('http://localhost:9001/3.0/system/preferences', {
+    ...           'delivery_status': 'enabled',
+    ...           }, method='PATCH')
+    Traceback (most recent call last):
+    ...
+    HTTPError: HTTP Error 405: 405 Method Not Allowed

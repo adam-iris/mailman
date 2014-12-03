@@ -45,7 +45,8 @@ from mailman.interfaces.archiver import ArchivePolicy
 from mailman.interfaces.autorespond import ResponseAction
 from mailman.interfaces.bounce import UnrecognizedBounceDisposition
 from mailman.interfaces.digests import DigestFrequency
-from mailman.interfaces.mailinglist import Personalization, ReplyToMunging
+from mailman.interfaces.mailinglist import (
+    Personalization, ReplyToMunging, SubscriptionPolicy)
 from mailman.interfaces.nntp import NewsgroupModeration
 
 
@@ -79,6 +80,7 @@ class BasicOperation:
         mlist.personalize = Personalization.none
         mlist.default_member_action = Action.defer
         mlist.default_nonmember_action = Action.hold
+        mlist.subscription_policy = SubscriptionPolicy.confirm
         # Notify the administrator of pending requests and membership changes.
         mlist.admin_immed_notify = True
         mlist.admin_notify_mchanges = False

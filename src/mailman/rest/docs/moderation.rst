@@ -226,21 +226,21 @@ moderator approval.
 
     >>> from mailman.app.moderator import hold_subscription
     >>> from mailman.interfaces.member import DeliveryMode
-    >>> sub_req_id = hold_subscription(
-    ...     ant, 'anne@example.com', 'Anne Person',
-    ...     'password', DeliveryMode.regular, 'en')
+    >>> from mailman.interfaces.subscriptions import RequestRecord
+    >>> req_id = hold_subscription(ant,
+    ...     RequestRecord('anne@example.com', 'Anne Person',
+    ...                   DeliveryMode.regular, 'en'))
     >>> transaction.commit()
 
 The subscription request is available from the mailing list.
 
     >>> dump_json('http://localhost:9001/3.0/lists/ant@example.com/requests')
     entry 0:
-        address: anne@example.com
         delivery_mode: regular
         display_name: Anne Person
+        email: anne@example.com
         http_etag: "..."
         language: en
-        password: password
         request_id: ...
         type: subscription
         when: 2005-08-01T07:49:23
@@ -254,10 +254,9 @@ Viewing unsubscription requests
 
 Bart tries to leave a mailing list, but he may not be allowed to.
 
-    >>> from mailman.app.membership import add_member
+    >>> from mailman.testing.helpers import subscribe
     >>> from mailman.app.moderator import hold_unsubscription
-    >>> bart = add_member(ant, 'bart@example.com', 'Bart Person',
-    ...     'password', DeliveryMode.regular, 'en')
+    >>> bart = subscribe(ant, 'Bart', email='bart@example.com')
     >>> unsub_req_id = hold_unsubscription(ant, 'bart@example.com')
     >>> transaction.commit()
 
@@ -265,17 +264,16 @@ The unsubscription request is also available from the mailing list.
 
     >>> dump_json('http://localhost:9001/3.0/lists/ant@example.com/requests')
     entry 0:
-        address: anne@example.com
         delivery_mode: regular
         display_name: Anne Person
+        email: anne@example.com
         http_etag: "..."
         language: en
-        password: password
         request_id: ...
         type: subscription
         when: 2005-08-01T07:49:23
     entry 1:
-        address: bart@example.com
+        email: bart@example.com
         http_etag: "..."
         request_id: ...
         type: unsubscription
@@ -291,13 +289,12 @@ You can view an individual membership change request by providing the
 request id.  Anne's subscription request looks like this.
 
     >>> dump_json('http://localhost:9001/3.0/lists/ant@example.com/'
-    ...           'requests/{}'.format(sub_req_id))
-    address: anne@example.com
+    ...           'requests/{}'.format(req_id))
     delivery_mode: regular
     display_name: Anne Person
+    email: anne@example.com
     http_etag: "..."
     language: en
-    password: password
     request_id: ...
     type: subscription
     when: 2005-08-01T07:49:23
@@ -306,7 +303,7 @@ Bart's unsubscription request looks like this.
 
     >>> dump_json('http://localhost:9001/3.0/lists/ant@example.com/'
     ...           'requests/{}'.format(unsub_req_id))
-    address: bart@example.com
+    email: bart@example.com
     http_etag: "..."
     request_id: ...
     type: unsubscription
@@ -328,7 +325,7 @@ data requires an action of one of the following:
 Anne's subscription request is accepted.
 
     >>> dump_json('http://localhost:9001/3.0/lists/'
-    ...           'ant@example.com/requests/{}'.format(sub_req_id),
+    ...           'ant@example.com/requests/{}'.format(req_id),
     ...           {'action': 'accept'})
     content-length: 0
     date: ...

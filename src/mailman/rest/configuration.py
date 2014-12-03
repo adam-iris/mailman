@@ -26,6 +26,8 @@ __all__ = [
 
 
 from lazr.config import as_boolean, as_timedelta
+from restish import http, resource
+
 from mailman.config import config
 from mailman.core.errors import (
     ReadOnlyPATCHRequestError, UnknownPATCHRequestError)
@@ -33,8 +35,7 @@ from mailman.interfaces.action import Action
 from mailman.interfaces.archiver import ArchivePolicy
 from mailman.interfaces.autorespond import ResponseAction
 from mailman.interfaces.mailinglist import IAcceptableAliasSet, ReplyToMunging
-from mailman.rest.helpers import (
-    GetterSetter, bad_request, etag, no_content, okay)
+from mailman.rest.helpers import GetterSetter, PATCH, etag, no_content
 from mailman.rest.validator import PatchValidator, Validator, enum_validator
 
 
@@ -45,7 +46,7 @@ class AcceptableAliases(GetterSetter):
     def get(self, mlist, attribute):
         """Return the mailing list's acceptable aliases."""
         assert attribute == 'acceptable_aliases', (
-            'Unexpected attribute: {}'.format(attribute))
+            'Unexpected attribute: {0}'.format(attribute))
         aliases = IAcceptableAliasSet(mlist)
         return sorted(aliases.aliases)
 
@@ -57,7 +58,7 @@ class AcceptableAliases(GetterSetter):
         ignored.
         """
         assert attribute == 'acceptable_aliases', (
-            'Unexpected attribute: {}'.format(attribute))
+            'Unexpected attribute: {0}'.format(attribute))
         alias_set = IAcceptableAliasSet(mlist)
         alias_set.clear()
         for alias in value:
@@ -72,7 +73,7 @@ def pipeline_validator(pipeline_name):
     """Convert the pipeline name to a string, but only if it's known."""
     if pipeline_name in config.pipelines:
         return unicode(pipeline_name)
-    raise ValueError('Unknown pipeline: {}'.format(pipeline_name))
+    raise ValueError('Unknown pipeline: {0}'.format(pipeline_name))
 
 
 def list_of_unicode(values):
@@ -155,14 +156,15 @@ for attribute, gettersetter in VALIDATORS.items():
 
 
 
-class ListConfiguration:
+class ListConfiguration(resource.Resource):
     """A mailing list configuration resource."""
 
     def __init__(self, mailing_list, attribute):
         self._mlist = mailing_list
         self._attribute = attribute
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def get_configuration(self, request):
         """Get a mailing list configuration."""
         resource = {}
         if self._attribute is None:
@@ -171,16 +173,16 @@ class ListConfiguration:
                 value = ATTRIBUTES[attribute].get(self._mlist, attribute)
                 resource[attribute] = value
         elif self._attribute not in ATTRIBUTES:
-            bad_request(
-                response, b'Unknown attribute: {}'.format(self._attribute))
-            return
+            return http.bad_request(
+                [], b'Unknown attribute: {0}'.format(self._attribute))
         else:
             attribute = self._attribute
             value = ATTRIBUTES[attribute].get(self._mlist, attribute)
             resource[attribute] = value
-        okay(response, etag(resource))
+        return http.ok([], etag(resource))
 
-    def on_put(self, request, response):
+    @resource.PUT()
+    def put_configuration(self, request):
         """Set a mailing list configuration."""
         attribute = self._attribute
         if attribute is None:
@@ -188,39 +190,34 @@ class ListConfiguration:
             try:
                 validator.update(self._mlist, request)
             except ValueError as error:
-                bad_request(response, str(error))
-                return
+                return http.bad_request([], str(error))
         elif attribute not in ATTRIBUTES:
-            bad_request(response, b'Unknown attribute: {}'.format(attribute))
-            return
+            return http.bad_request(
+                [], b'Unknown attribute: {0}'.format(attribute))
         elif ATTRIBUTES[attribute].decoder is None:
-            bad_request(
-                response, b'Read-only attribute: {}'.format(attribute))
-            return
+            return http.bad_request(
+                [], b'Read-only attribute: {0}'.format(attribute))
         else:
             validator = Validator(**{attribute: VALIDATORS[attribute]})
             try:
                 validator.update(self._mlist, request)
             except ValueError as error:
-                bad_request(response, str(error))
-                return
-        no_content(response)
+                return http.bad_request([], str(error))
+        return no_content()
 
-    def on_patch(self, request, response):
+    @PATCH()
+    def patch_configuration(self, request):
         """Patch the configuration (i.e. partial update)."""
         try:
             validator = PatchValidator(request, ATTRIBUTES)
         except UnknownPATCHRequestError as error:
-            bad_request(
-                response, b'Unknown attribute: {}'.format(error.attribute))
-            return
+            return http.bad_request(
+                [], b'Unknown attribute: {0}'.format(error.attribute))
         except ReadOnlyPATCHRequestError as error:
-            bad_request(
-                response, b'Read-only attribute: {}'.format(error.attribute))
-            return
+            return http.bad_request(
+                [], b'Read-only attribute: {0}'.format(error.attribute))
         try:
             validator.update(self._mlist, request)
         except ValueError as error:
-            bad_request(response, str(error))
-        else:
-            no_content(response)
+            return http.bad_request([], str(error))
+        return no_content()

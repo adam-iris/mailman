@@ -28,14 +28,13 @@ __all__ = [
 
 
 from operator import attrgetter
+from restish import http, resource
 from zope.component import getUtility
 
 from mailman.interfaces.address import (
     ExistingAddressError, InvalidEmailAddressError)
 from mailman.interfaces.usermanager import IUserManager
-from mailman.rest.helpers import (
-    BadRequest, CollectionMixin, NotFound, bad_request, child, created, etag,
-    no_content, not_found, okay, path_to)
+from mailman.rest.helpers import CollectionMixin, etag, no_content, path_to
 from mailman.rest.members import MemberCollection
 from mailman.rest.preferences import Preferences
 from mailman.rest.validator import Validator
@@ -43,7 +42,7 @@ from mailman.utilities.datetime import now
 
 
 
-class _AddressBase(CollectionMixin):
+class _AddressBase(resource.Resource, CollectionMixin):
     """Shared base class for address representations."""
 
     def _resource_as_dict(self, address):
@@ -73,14 +72,15 @@ class _AddressBase(CollectionMixin):
 class AllAddresses(_AddressBase):
     """The addresses."""
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def collection(self, request):
         """/addresses"""
         resource = self._make_collection(request)
-        okay(response, etag(resource))
+        return http.ok([], etag(resource))
 
 
 
-class _VerifyResource:
+class _VerifyResource(resource.Resource):
     """A helper resource for verify/unverify POSTS."""
 
     def __init__(self, address, action):
@@ -88,13 +88,14 @@ class _VerifyResource:
         self._action = action
         assert action in ('verify', 'unverify')
 
-    def on_post(self, request, response):
+    @resource.POST()
+    def verify(self, request):
         # We don't care about the POST data, just do the action.
         if self._action == 'verify' and self._address.verified_on is None:
             self._address.verified_on = now()
         elif self._action == 'unverify':
             self._address.verified_on = None
-        no_content(response)
+        return no_content()
 
 
 class AnAddress(_AddressBase):
@@ -108,51 +109,51 @@ class AnAddress(_AddressBase):
         """
         self._address = getUtility(IUserManager).get_address(email)
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def address(self, request):
         """Return a single address."""
         if self._address is None:
-            not_found(response)
-        else:
-            okay(response, self._resource_as_json(self._address))
+            return http.not_found()
+        return http.ok([], self._resource_as_json(self._address))
 
-    @child()
+    @resource.child()
     def memberships(self, request, segments):
         """/addresses/<email>/memberships"""
         if len(segments) != 0:
-            return BadRequest(), []
+            return http.bad_request()
         if self._address is None:
-            return NotFound(), []
+            return http.not_found()
         return AddressMemberships(self._address)
 
-    @child()
+    @resource.child()
     def preferences(self, request, segments):
         """/addresses/<email>/preferences"""
         if len(segments) != 0:
-            return NotFound(), []
+            return http.bad_request()
         if self._address is None:
-            return NotFound(), []
+            return http.not_found()
         child = Preferences(
             self._address.preferences,
             'addresses/{0}'.format(self._address.email))
         return child, []
 
-    @child()
+    @resource.child()
     def verify(self, request, segments):
         """/addresses/<email>/verify"""
         if len(segments) != 0:
-            return BadRequest(), []
+            return http.bad_request()
         if self._address is None:
-            return NotFound(), []
+            return http.not_found()
         child = _VerifyResource(self._address, 'verify')
         return child, []
 
-    @child()
+    @resource.child()
     def unverify(self, request, segments):
         """/addresses/<email>/verify"""
         if len(segments) != 0:
-            return BadRequest(), []
+            return http.bad_request()
         if self._address is None:
-            return NotFound(), []
+            return http.not_found()
         child = _VerifyResource(self._address, 'unverify')
         return child, []
 
@@ -170,21 +171,20 @@ class UserAddresses(_AddressBase):
         return sorted(self._user.addresses,
                       key=attrgetter('original_email'))
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def collection(self, request):
         """/addresses"""
-        if self._user is None:
-            not_found(response)
-        else:
-            okay(response, etag(self._make_collection(request)))
+        resource = self._make_collection(request)
+        return http.ok([], etag(resource))
 
-    def on_post(self, request, response):
+    @resource.POST()
+    def create(self, request):
         """POST to /addresses
 
         Add a new address to the user record.
         """
         if self._user is None:
-            not_found(response)
-            return
+            return http.not_found()
         user_manager = getUtility(IUserManager)
         validator = Validator(email=unicode,
                               display_name=unicode,
@@ -192,15 +192,16 @@ class UserAddresses(_AddressBase):
         try:
             address = user_manager.create_address(**validator(request))
         except ValueError as error:
-            bad_request(response, str(error))
+            return http.bad_request([], str(error))
         except InvalidEmailAddressError:
-            bad_request(response, b'Invalid email address')
+            return http.bad_request([], b'Invalid email address')
         except ExistingAddressError:
-            bad_request(response, b'Address already exists')
+            return http.bad_request([], b'Address already exists')
         else:
             # Link the address to the current user and return it.
             address.user = self._user
-            created(response, path_to('addresses/{0}'.format(address.email)))
+            location = path_to('addresses/{0}'.format(address.email))
+            return http.created(location, [], None)
 
 
 

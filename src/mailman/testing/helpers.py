@@ -35,6 +35,7 @@ __all__ = [
     'reset_the_world',
     'specialized_message_from_string',
     'subscribe',
+    'subscribe_ex',
     'temporary_db',
     'wait_for_webservice',
     ]
@@ -313,9 +314,8 @@ def call_api(url, data=None, method=None, username=None, password=None):
     :param password: The HTTP Basic Auth password.  None means use the value
         from the configuration.
     :type username: str
-    :return: A 2-tuple containing the JSON decoded content (if there is any,
-        else None) and the response object.
-    :rtype: 2-tuple of (dict, response)
+    :return: The response object and the JSON decoded content, if there is
+        any.  If not, the second tuple item will be None.
     :raises HTTPError: when a non-2xx return code is received.
     """
     headers = {}
@@ -434,10 +434,11 @@ class chdir:
 
 
 
-def subscribe(mlist, first_name, role=MemberRole.member):
+def subscribe(mlist, first_name, role=MemberRole.member, email=None):
     """Helper for subscribing a sample person to a mailing list."""
     user_manager = getUtility(IUserManager)
-    email = '{0}person@example.com'.format(first_name[0].lower())
+    email = ('{0}person@example.com'.format(first_name[0].lower())
+             if email is None else email)
     full_name = '{0} Person'.format(first_name)
     with transaction():
         person = user_manager.get_user(email)
@@ -445,13 +446,30 @@ def subscribe(mlist, first_name, role=MemberRole.member):
             address = user_manager.get_address(email)
             if address is None:
                 person = user_manager.create_user(email, full_name)
-                preferred_address = list(person.addresses)[0]
-                mlist.subscribe(preferred_address, role)
+                subscription_address = list(person.addresses)[0]
             else:
-                mlist.subscribe(address, role)
+                subscription_address = address
         else:
-            preferred_address = list(person.addresses)[0]
-            mlist.subscribe(preferred_address, role)
+            subscription_address = list(person.addresses)[0]
+        # We can't return the newly created member because that will
+        # implicitly open a new transaction, which can break doctests.  If you
+        # really need the newly created member, look it up.
+        mlist.subscribe(subscription_address, role)
+
+
+def subscribe_ex(mlist, first_name, role=MemberRole.member, email=None):
+    """Like ``subscribe()`` but returns the newly created member object.
+
+    Only use this in contexts where you can accept the opening of an implicit
+    transaction (i.e. *not* in REST tests) unless you explicitly close said
+    transaction.  Otherwise you will lock the database.
+    """
+    # Blarg.  I wish we didn't have to duplicate this logic.
+    email = ('{0}person@example.com'.format(first_name[0].lower())
+             if email is None else email)
+    subscribe(mlist, first_name, role, email)
+    roster = mlist.get_roster(role)
+    return roster.get_member(email)
 
 
 
@@ -524,8 +542,3 @@ class LogFileMark:
         with open(self._filename) as fp:
             fp.seek(self._filepos)
             return fp.readline()
-
-    def read(self):
-        with open(self._filename) as fp:
-            fp.seek(self._filepos)
-            return fp.read()

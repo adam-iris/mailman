@@ -208,7 +208,7 @@ class Create:
         except ListAlreadyExistsError:
             self.parser.error(_('List already exists: $fqdn_listname'))
             return
-        except BadDomainSpecificationError as domain:
+        except BadDomainSpecificationError, domain:
             self.parser.error(_('Undefined domain: $domain'))
             return
         # Find the language associated with the code, then set the mailing

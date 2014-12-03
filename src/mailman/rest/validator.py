@@ -62,7 +62,7 @@ def subscriber_validator(subscriber):
     try:
         return UUID(int=int(subscriber))
     except ValueError:
-        return unicode(subscriber)
+        return subscriber
 
 
 def language_validator(code):
@@ -90,7 +90,11 @@ class Validator:
         # in the pre-converted dictionary.  All keys which show up more than
         # once get a list value.
         missing = object()
-        items = request.params.items()
+        # This is a gross hack to allow PATCH.  See helpers.py for details.
+        try:
+            items = request.PATCH.items()
+        except AttributeError:
+            items = request.POST.items()
         for key, new_value in items:
             old_value = form_data.get(key, missing)
             if old_value is missing:
@@ -162,7 +166,7 @@ class PatchValidator(Validator):
             that is defined as read-only.
         """
         validationators = {}
-        for attribute in request.params:
+        for attribute in request.PATCH:
             if attribute not in converters:
                 raise UnknownPATCHRequestError(attribute)
             if converters[attribute].decoder is None:

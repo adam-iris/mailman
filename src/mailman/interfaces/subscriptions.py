@@ -22,9 +22,11 @@ from __future__ import absolute_import, print_function, unicode_literals
 __metaclass__ = type
 __all__ = [
     'ISubscriptionService',
+    'RequestRecord',
     ]
 
 
+from collections import namedtuple
 from zope.interface import Interface
 
 from mailman.interfaces.errors import MailmanError
@@ -41,6 +43,19 @@ class MissingUserError(MailmanError):
 
     def __str__(self):
         return self.user_id
+
+
+
+_RequestRecord = namedtuple(
+    'RequestRecord',
+    'email display_name delivery_mode, language')
+def RequestRecord(email, display_name='',
+                  delivery_mode=DeliveryMode.regular,
+                  language=None):
+    if language is None:
+        from mailman.core.constants import system_preferences
+        language = system_preferences.preferred_language
+    return _RequestRecord(email, display_name, delivery_mode, language)
 
 
 

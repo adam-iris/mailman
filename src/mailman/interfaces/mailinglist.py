@@ -28,6 +28,7 @@ __all__ = [
     'IMailingList',
     'Personalization',
     'ReplyToMunging',
+    'SubscriptionPolicy',
     ]
 
 
@@ -55,6 +56,18 @@ class ReplyToMunging(Enum):
     point_to_list = 1
     # An explicit Reply-To header is added
     explicit_header = 2
+
+
+class SubscriptionPolicy(Enum):
+    # Neither confirmation, nor moderator approval is required.
+    open = 0
+    # The user must confirm the subscription.
+    confirm = 1
+    # The moderator must approve the subscription.
+    moderate = 2
+    # The user must first confirm their subscription, and then if that is
+    # successful, the moderator must also approve it.
+    confirm_then_moderate = 3
 
 
 
@@ -251,6 +264,9 @@ class IMailingList(Interface):
         :return: The requested roster.
         :rtype: Roster
         """
+
+    subscription_policy = Attribute(
+        """The policy for subscribing new members to the list.""")
 
     def subscribe(subscriber, role=MemberRole.member):
         """Subscribe the given address or user to the mailing list.

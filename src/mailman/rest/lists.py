@@ -26,33 +26,32 @@ __all__ = [
     'ListArchivers',
     'ListConfiguration',
     'ListsForDomain',
-    'Styles',
     ]
 
 
 from lazr.config import as_boolean
 from operator import attrgetter
+from restish import http, resource
 from zope.component import getUtility
 
 from mailman.app.lifecycle import create_list, remove_list
-from mailman.config import config
 from mailman.interfaces.domain import BadDomainSpecificationError
 from mailman.interfaces.listmanager import (
     IListManager, ListAlreadyExistsError)
 from mailman.interfaces.mailinglist import IListArchiverSet
 from mailman.interfaces.member import MemberRole
-from mailman.interfaces.styles import IStyleManager
 from mailman.interfaces.subscriptions import ISubscriptionService
 from mailman.rest.configuration import ListConfiguration
 from mailman.rest.helpers import (
-    CollectionMixin, GetterSetter, NotFound, bad_request, child, created,
-    etag, no_content, not_found, okay, paginate, path_to)
+    CollectionMixin, GetterSetter, PATCH, etag, no_content, paginate, path_to,
+    restish_matcher)
 from mailman.rest.members import AMember, MemberCollection
 from mailman.rest.moderation import HeldMessages, SubscriptionRequests
 from mailman.rest.validator import Validator
 
 
 
+@restish_matcher
 def member_matcher(request, segments):
     """A matcher of member URLs inside mailing lists.
 
@@ -65,9 +64,13 @@ def member_matcher(request, segments):
     except KeyError:
         # Not a valid role.
         return None
+    # No more segments.
+    # XXX 2010-02-25 barry Matchers are undocumented in restish; they return a
+    # 3-tuple of (match_args, match_kws, segments).
     return (), dict(role=role, email=segments[1]), ()
 
 
+@restish_matcher
 def roster_matcher(request, segments):
     """A matcher of all members URLs inside mailing lists.
 
@@ -82,6 +85,7 @@ def roster_matcher(request, segments):
         return None
 
 
+@restish_matcher
 def config_matcher(request, segments):
     """A matcher for a mailing list's configuration resource.
 
@@ -99,7 +103,7 @@ def config_matcher(request, segments):
 
 
 
-class _ListBase(CollectionMixin):
+class _ListBase(resource.Resource, CollectionMixin):
     """Shared base class for mailing list representations."""
 
     def _resource_as_dict(self, mlist):
@@ -134,66 +138,66 @@ class AList(_ListBase):
         else:
             self._mlist = manager.get_by_list_id(list_identifier)
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def mailing_list(self, request):
         """Return a single mailing list end-point."""
         if self._mlist is None:
-            not_found(response)
-        else:
-            okay(response, self._resource_as_json(self._mlist))
+            return http.not_found()
+        return http.ok([], self._resource_as_json(self._mlist))
 
-    def on_delete(self, request, response):
+    @resource.DELETE()
+    def delete_list(self, request):
         """Delete the named mailing list."""
         if self._mlist is None:
-            not_found(response)
-        else:
-            remove_list(self._mlist)
-            no_content(response)
+            return http.not_found()
+        remove_list(self._mlist)
+        return no_content()
 
-    @child(member_matcher)
+    @resource.child(member_matcher)
     def member(self, request, segments, role, email):
         """Return a single member representation."""
         if self._mlist is None:
-            return NotFound(), []
+            return http.not_found()
         members = getUtility(ISubscriptionService).find_members(
             email, self._mlist.list_id, role)
         if len(members) == 0:
-            return NotFound(), []
+            return http.not_found()
         assert len(members) == 1, 'Too many matches'
         return AMember(members[0].member_id)
 
-    @child(roster_matcher)
+    @resource.child(roster_matcher)
     def roster(self, request, segments, role):
         """Return the collection of all a mailing list's members."""
         if self._mlist is None:
-            return NotFound(), []
+            return http.not_found()
         return MembersOfList(self._mlist, role)
 
-    @child(config_matcher)
+    @resource.child(config_matcher)
     def config(self, request, segments, attribute=None):
         """Return a mailing list configuration object."""
         if self._mlist is None:
-            return NotFound(), []
+            return http.not_found()
         return ListConfiguration(self._mlist, attribute)
 
-    @child()
+    @resource.child()
     def held(self, request, segments):
         """Return a list of held messages for the mailing list."""
         if self._mlist is None:
-            return NotFound(), []
+            return http.not_found()
         return HeldMessages(self._mlist)
 
-    @child()
+    @resource.child()
     def requests(self, request, segments):
         """Return a list of subscription/unsubscription requests."""
         if self._mlist is None:
-            return NotFound(), []
+            return http.not_found()
         return SubscriptionRequests(self._mlist)
 
-    @child()
+    @resource.child()
     def archivers(self, request, segments):
         """Return a representation of mailing list archivers."""
         if self._mlist is None:
-            return NotFound(), []
+            return http.not_found()
         return ListArchivers(self._mlist)
 
 
@@ -201,7 +205,8 @@ class AList(_ListBase):
 class AllLists(_ListBase):
     """The mailing lists."""
 
-    def on_post(self, request, response):
+    @resource.POST()
+    def create(self, request):
         """Create a new mailing list."""
         try:
             validator = Validator(fqdn_listname=unicode,
@@ -209,20 +214,22 @@ class AllLists(_ListBase):
                                   _optional=('style_name',))
             mlist = create_list(**validator(request))
         except ListAlreadyExistsError:
-            bad_request(response, b'Mailing list exists')
+            return http.bad_request([], b'Mailing list exists')
         except BadDomainSpecificationError as error:
-            bad_request(
-                response,
-                b'Domain does not exist: {0}'.format(error.domain))
+            return http.bad_request([], b'Domain does not exist: {0}'.format(
+                error.domain))
         except ValueError as error:
-            bad_request(response, str(error))
-        else:
-            created(response, path_to('lists/{0}'.format(mlist.list_id)))
+            return http.bad_request([], str(error))
+        # wsgiref wants headers to be bytes, not unicodes.
+        location = path_to('lists/{0}'.format(mlist.list_id))
+        # Include no extra headers or body.
+        return http.created(location, [], None)
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def collection(self, request):
         """/lists"""
         resource = self._make_collection(request)
-        okay(response, etag(resource))
+        return http.ok([], etag(resource))
 
 
 
@@ -250,10 +257,11 @@ class ListsForDomain(_ListBase):
     def __init__(self, domain):
         self._domain = domain
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def collection(self, request):
         """/domains/<domain>/lists"""
         resource = self._make_collection(request)
-        okay(response, etag(resource))
+        return http.ok([], etag(resource))
 
     @paginate
     def _get_collection(self, request):
@@ -279,20 +287,21 @@ class ArchiverGetterSetter(GetterSetter):
         archiver.is_enabled = as_boolean(value)
 
 
-class ListArchivers:
+class ListArchivers(resource.Resource):
     """The archivers for a list, with their enabled flags."""
 
     def __init__(self, mlist):
         self._mlist = mlist
 
-    def on_get(self, request, response):
+    @resource.GET()
+    def statuses(self, request):
         """Get all the archiver statuses."""
         archiver_set = IListArchiverSet(self._mlist)
         resource = {archiver.name: archiver.is_enabled
                     for archiver in archiver_set.archivers}
-        okay(response, etag(resource))
+        return http.ok([], etag(resource))
 
-    def patch_put(self, request, response, is_optional):
+    def patch_put(self, request, is_optional):
         archiver_set = IListArchiverSet(self._mlist)
         kws = {archiver.name: ArchiverGetterSetter(self._mlist)
                for archiver in archiver_set.archivers}
@@ -302,29 +311,15 @@ class ListArchivers:
         try:
             Validator(**kws).update(self._mlist, request)
         except ValueError as error:
-            bad_request(response, str(error))
-        else:
-            no_content(response)
+            return http.bad_request([], str(error))
+        return no_content()
 
-    def on_put(self, request, response):
+    @resource.PUT()
+    def put_statuses(self, request):
         """Update all the archiver statuses."""
-        self.patch_put(request, response, is_optional=False)
+        return self.patch_put(request, is_optional=False)
 
-    def on_patch(self, request, response):
+    @PATCH()
+    def patch_statuses(self, request):
         """Patch some archiver statueses."""
-        self.patch_put(request, response, is_optional=True)
-
-
-
-class Styles:
-    """Simple resource representing all list styles."""
-
-    def __init__(self):
-        manager = getUtility(IStyleManager)
-        style_names = sorted(style.name for style in manager.styles)
-        self._resource = dict(
-            style_names=style_names,
-            default=config.styles.default)
-
-    def on_get(self, request, response):
-        okay(response, etag(self._resource))
+        return self.patch_put(request, is_optional=True)

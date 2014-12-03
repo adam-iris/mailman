@@ -27,7 +27,6 @@ __all__ = [
 
 import unittest
 
-from falcon import HTTPInvalidParam, Request
 from mailman.app.lifecycle import create_list
 from mailman.database.transaction import transaction
 from mailman.rest.helpers import paginate
@@ -35,13 +34,15 @@ from mailman.testing.layers import RESTLayer
 
 
 
-class _FakeRequest(Request):
+class _FakeRequest:
+    """Fake restish.http.Request object."""
+
     def __init__(self, count=None, page=None):
-        self._params = {}
+        self.GET = {}
         if count is not None:
-            self._params['count'] = count
+            self.GET['count'] = count
         if page is not None:
-            self._params['page'] = page
+            self.GET['page'] = page
 
 
 
@@ -104,29 +105,41 @@ class TestPaginateHelper(unittest.TestCase):
         @paginate
         def get_collection(self, request):
             return []
-        self.assertRaises(HTTPInvalidParam, get_collection,
-                          None, _FakeRequest('two', 1))
+        response = get_collection(None, _FakeRequest('two', 1))
+        self.assertEqual(response.status, '400 Bad Request')
+
+    def test_no_get_attr_returns_bad_request(self):
+        # ?count=two&page=2 are not valid values so a bad request is returned.
+        @paginate
+        def get_collection(self, request):
+            return []
+        request = _FakeRequest()
+        del request.GET
+        # The request object has no GET attribute.
+        self.assertIsNone(getattr(request, 'GET', None))
+        response = get_collection(None, request)
+        self.assertEqual(response.status, '400 Bad Request')
 
     def test_negative_count(self):
         # ?count=-1&page=1
         @paginate
         def get_collection(self, request):
             return ['one', 'two', 'three', 'four', 'five']
-        self.assertRaises(HTTPInvalidParam, get_collection,
-                          None, _FakeRequest(-1, 1))
+        response = get_collection(None, _FakeRequest(-1, 1))
+        self.assertEqual(response.status, '400 Bad Request')
 
     def test_negative_page(self):
         # ?count=1&page=-1
         @paginate
         def get_collection(self, request):
             return ['one', 'two', 'three', 'four', 'five']
-        self.assertRaises(HTTPInvalidParam, get_collection,
-                          None, _FakeRequest(1, -1))
+        response = get_collection(None, _FakeRequest(1, -1))
+        self.assertEqual(response.status, '400 Bad Request')
 
     def test_negative_page_and_count(self):
         # ?count=1&page=-1
         @paginate
         def get_collection(self, request):
             return ['one', 'two', 'three', 'four', 'five']
-        self.assertRaises(HTTPInvalidParam, get_collection,
-                          None, _FakeRequest(-1, -1))
+        response = get_collection(None, _FakeRequest(-1, -1))
+        self.assertEqual(response.status, '400 Bad Request')
